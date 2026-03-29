@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SpaceSynth Warrior</title>
+<style>
+  * { margin: 0; padding: 0; }
+  body { background: #000; overflow: hidden; }
+  canvas { display: block; }
+  #hud {
+    position: absolute; top: 10px; left: 10px;
+    color: #0ff; font-family: monospace; font-size: 18px;
+    text-shadow: 0 0 10px #0ff;
+  }
+  #gameover {
+    display: none;
+    position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    color: #f00; font-family: monospace; font-size: 48px;
+    text-shadow: 0 0 20px #f00;
+    text-align: center;
+  }
+  #gameover span {
+    display: block; font-size: 18px; color: #0ff; margin-top: 20px;
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+
+<div id="hud">
+  <div>HP: <span id="hp">3</span></div>
+  <div>SCORE: <span id="score">0</span></div>
+</div>
+
+<div id="gameover">
+  GAME OVER
+  <span onclick="restart()">[ PRESS SPACE TO RESTART ]</span>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="wasm_exec.js"></script>
+<script>
+const go = new Go();
+let wasmReady = false;
+let gameOver = false;
+
+WebAssembly.instantiateStreaming(fetch("game.wasm"), go.importObject).then(result => {
+  go.run(result.instance);
+  wasmReady = true;
+});
+
+// Three.js setup
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x000011, 0.04);
+
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.set(0, 14, 8);
+camera.lookAt(0, 0, -2);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setClearColor(0x000011);
+document.body.appendChild(renderer.domElement);
+
+// Lights
+const ambientLight = new THREE.AmbientLight(0x222244);
+scene.add(ambientLight);
+const dirLight = new THREE.DirectionalLight(0x6666ff, 0.8);
+dirLight.position.set(5, 10, 5);
+scene.add(dirLight);
+const pointLight = new THREE.PointLight(0x00ffff, 1, 20);
+pointLight.position.set(0, 5, 0);
+scene.add(pointLight);
+
+// Grid floor
+const gridHelper = new THREE.GridHelper(20, 20, 0x003333, 0x001a1a);
+scene.add(gridHelper);
+
+// Stars
+const starsGeo = new THREE.BufferGeometry();
+const starPositions = [];
+for (let i = 0; i < 500; i++) {
+  starPositions.push((Math.random() - 0.5) * 80);
+  starPositions.push(Math.random() * 30 + 5);
+  starPositions.push((Math.random() - 0.5) * 80);
+}
+starsGeo.setAttribute('position', new THREE.Float32BufferAttribute(starPositions, 3));
+const starsMat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.15 });
+scene.add(new THREE.Points(starsGeo, starsMat));
+
+// Player mesh
+const playerGeo = new THREE.ConeGeometry(0.4, 1.0, 4);
+playerGeo.rotateX(Math.PI);
+const playerMat = new THREE.MeshPhongMaterial({ color: 0x00ffff, emissive: 0x004444 });
+const playerMesh = new THREE.Mesh(playerGeo, playerMat);
+playerMesh.position.y = 0.5;
+scene.add(playerMesh);
+
+// Player glow
+const glowGeo = new THREE.SphereGeometry(0.6, 8, 8);
+const glowMat = new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.15 });
+const glowMesh = new THREE.Mesh(glowGeo, glowMat);
+playerMesh.add(glowMesh);
+
+// Object pools
+const bulletPool = [];
+const bulletMat = new THREE.MeshBasicMaterial({ color: 0x00ff88 });
+const bulletGeo = new THREE.SphereGeometry(0.15, 6, 6);
+
+function getBulletMesh() {
+  for (const m of bulletPool) {
+    if (!m.visible) { m.visible = true; return m; }
+  }
+  const m = new THREE.Mesh(bulletGeo, bulletMat);
+  m.position.y = 0.5;
+  scene.add(m);
+  bulletPool.push(m);
+  return m;
+}
+
+const enemyPool = [];
+const enemyMat = new THREE.MeshPhongMaterial({ color: 0xff0044, emissive: 0x330011 });
+const enemyGeo = new THREE.BoxGeometry(0.7, 0.7, 0.7);
+
+function getEnemyMesh() {
+  for (const m of enemyPool) {
+    if (!m.visible) { m.visible = true; return m; }
+  }
+  const m = new THREE.Mesh(enemyGeo, enemyMat);
+  m.position.y = 0.5;
+  scene.add(m);
+  enemyPool.push(m);
+  return m;
+}
+
+// Input
+document.addEventListener('keydown', e => {
+  if (!wasmReady) return;
+  e.preventDefault();
+  if (gameOver && e.code === 'Space') { restart(); return; }
+  goKeyDown(e.code);
+});
+document.addEventListener('keyup', e => {
+  if (!wasmReady) return;
+  goKeyUp(e.code);
+});
+
+function restart() {
+  gameOver = false;
+  document.getElementById('gameover').style.display = 'none';
+  goResetGame();
+}
+
+// Game loop
+function animate() {
+  requestAnimationFrame(animate);
+
+  if (!wasmReady || gameOver) {
+    renderer.render(scene, camera);
+    return;
+  }
+
+  const state = goGameUpdate();
+
+  // Update player
+  playerMesh.position.x = state.playerX;
+  playerMesh.position.z = state.playerZ;
+
+  // Pulse glow
+  glowMat.opacity = 0.1 + Math.sin(Date.now() * 0.005) * 0.05;
+
+  // Update bullets
+  bulletPool.forEach(m => m.visible = false);
+  for (let i = 0; i < state.bullets.length; i++) {
+    const b = state.bullets[i];
+    const mesh = getBulletMesh();
+    mesh.position.x = b.x;
+    mesh.position.z = b.z;
+  }
+
+  // Update enemies
+  enemyPool.forEach(m => m.visible = false);
+  for (let i = 0; i < state.enemies.length; i++) {
+    const e = state.enemies[i];
+    const mesh = getEnemyMesh();
+    mesh.position.x = e.x;
+    mesh.position.z = e.z;
+    mesh.rotation.y += 0.02;
+  }
+
+  // HUD
+  document.getElementById('hp').textContent = state.playerHP;
+  document.getElementById('score').textContent = state.score;
+
+  // Game over check
+  if (state.playerHP <= 0) {
+    gameOver = true;
+    document.getElementById('gameover').style.display = 'block';
+  }
+
+  renderer.render(scene, camera);
+}
+
+animate();
+
+// Resize
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>
