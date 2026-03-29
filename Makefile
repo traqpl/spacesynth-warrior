@@ -3,7 +3,7 @@
 BINARY       = spacesynth-warrior
 WASM_OUT     = web/game.wasm
 WASM_EXEC    = web/wasm_exec.js
-PORT         ?= 8080
+PORT         ?= 8074
 DOCKER_IMAGE ?= spacesynth-warrior:latest
 
 GOROOT_WASM_EXEC = $(shell go env GOROOT)/lib/wasm/wasm_exec.js

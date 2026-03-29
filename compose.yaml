@@ -4,6 +4,6 @@ services:
     container_name: spacesynth-warrior
     restart: unless-stopped
     ports:
-      - "${PORT:-8080}:8080"
+      - "${PORT:-8074}:8074"
     environment:
-      PORT: "8080"
+      PORT: "8074"

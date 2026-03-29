@@ -38,7 +38,7 @@ WORKDIR /app
 COPY --from=build /out/server /app/server
 COPY --from=build /src/web /app/web
 
-ENV PORT=8080
-EXPOSE 8080
+ENV PORT=8074
+EXPOSE 8074
 
 ENTRYPOINT ["/app/server"]
