@@ -38,7 +38,7 @@ deploy-agent: wasm
 	mkdir -p "$$DEPLOY_DIR" && \
 	docker build -t $(DOCKER_IMAGE) . && \
 	cp compose.yaml "$$DEPLOY_DIR/compose.yaml" && \
-	IMAGE_NAME=$(DOCKER_IMAGE) PORT=$(PORT) docker compose -f "$$DEPLOY_DIR/compose.yaml" up -d --force-recreate --remove-orphans
+	IMAGE_NAME=$(DOCKER_IMAGE) docker compose -f "$$DEPLOY_DIR/compose.yaml" up -d --force-recreate --remove-orphans
 
 run: wasm
 	@echo "Opening browser..."
